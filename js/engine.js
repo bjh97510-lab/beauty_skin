@@ -313,5 +313,31 @@
     });
   }
 
-  SD.engine = { analyze, search, filter, routine, conflictsBetween, parseInci, assessActive, phFit, fmtPpm, fmtMw, fmtNum, EVIDENCE, MW_LIMIT, CONCEPT_PPM };
+  /* 전성분 판독 요약 (라이브러리·비교용) */
+  function summarizeInci(rows) {
+    const matched = rows.filter((r) => r.match);
+    return {
+      total: rows.length,
+      matched,
+      concept: matched.filter((r) => r.match.ing.evidence === 'concept'),
+      limited: matched.filter((r) => r.match.ing.evidence === 'limited'),
+      overMw: matched.filter((r) => r.match.ing.mw != null && r.match.ing.mw > MW_LIMIT),
+      tail: matched.filter((r) => r.flags.some((f) => f.text.startsWith('말단'))),
+      dds: rows.filter((r) => r.dds),
+      ids: [...new Set(matched.map((r) => r.match.id))],
+    };
+  }
+
+  /* 원료 id 목록 간 충돌 (전성분 제품 비교용) */
+  function conflictsAmong(idLists) {
+    const found = [];
+    CONFLICTS.forEach((c) => {
+      const hasA = idLists.findIndex((ids) => ids.includes(c.a));
+      const hasB = idLists.findIndex((ids) => ids.includes(c.b));
+      if (hasA >= 0 && hasB >= 0) found.push(c);
+    });
+    return found;
+  }
+
+  SD.engine = { analyze, summarizeInci, conflictsAmong, search, filter, routine, conflictsBetween, parseInci, assessActive, phFit, fmtPpm, fmtMw, fmtNum, EVIDENCE, MW_LIMIT, CONCEPT_PPM };
 })();

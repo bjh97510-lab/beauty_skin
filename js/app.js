@@ -22,6 +22,11 @@
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
     bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
+    bookmark: '<path d="M6 3h12v18l-6-4-6 4V3Z"/>',
+    columns: '<rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/>',
+    trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+    download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+    upload: '<path d="M12 20V9M7 14l5-5 5 5M5 4h14"/>',
     image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
   };
   const ico = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[n]}</svg>`;
@@ -136,11 +141,14 @@
   /* ───────── Search ───────── */
   function renderSearch(q) {
     const results = E.search(q);
+    const nq = q.toLowerCase().replace(/[\s\-·()]/g, '');
+    const libHits = libAll().filter((p) => [p.brand, p.name, p.inci].join('|').toLowerCase().replace(/[\s\-·()]/g, '').includes(nq));
     $app.innerHTML = `
       <div class="page-h"><div class="eyebrow" style="color:var(--mint-ink)">Search</div><h1>"${esc(q)}" 검색 결과</h1></div>
       ${searchBar(q)}
       <div class="section-h"><h2>${results.length}개 제품</h2></div>
-      ${results.length ? `<div class="plist">${results.map(productCard).join('')}</div>` : `<div class="card empty">${ico('search')}<p>일치하는 제품이 없습니다.<br/>성분명은 한글 INCI(예: 판테놀) 또는 영문(Panthenol)으로 검색해 보세요.</p></div>`}`;
+      ${results.length ? `<div class="plist">${results.map(productCard).join('')}</div>` : `<div class="card empty">${ico('search')}<p>일치하는 제품이 없습니다.<br/>성분명은 한글 INCI(예: 판테놀) 또는 영문(Panthenol)으로 검색해 보세요.</p></div>`}
+      ${libHits.length ? `<div class="section-h"><h2>${ico('bookmark', 16)} 내 제품 ${libHits.length}개</h2><a class="link-btn" href="#/library">라이브러리 →</a></div><div class="plist">${libHits.map((p) => libCard(p, false)).join('')}</div>` : ''}`;
     bindSearch();
   }
 
@@ -609,21 +617,62 @@
     const rows = E.parseInci(text);
     const out = document.getElementById('scan-out');
     if (!rows.length) { out.innerHTML = ''; return; }
-    const matched = rows.filter((r) => r.match);
-    const concept = matched.filter((r) => r.match.ing.evidence === 'concept');
-    const over = matched.filter((r) => r.match.ing.mw > E.MW_LIMIT);
-    const tail = matched.filter((r) => r.flags.some((f) => f.text.startsWith('말단')));
-    const dds = rows.filter((r) => r.dds);
-
     out.innerHTML = `
-      <div class="section-h"><h2>${ico('bolt', 16)} 판독 결과</h2><span class="xs muted num">전성분 ${rows.length}종 · 유효성분 ${matched.length}종</span></div>
-      <div class="stats" style="margin-top:0">
-        <div class="stat"><div class="k">인식 유효성분</div><div class="v num">${matched.length}</div></div>
-        <div class="stat danger"><div class="k">컨셉 원료</div><div class="v num">${concept.length}</div></div>
-        <div class="stat warn"><div class="k">500 Da 초과</div><div class="v num">${over.length}</div></div>
-        <div class="stat"><div class="k">DDS 단서</div><div class="v num">${dds.length}</div></div>
+      <div class="section-h"><h2>${ico('bolt', 16)} 판독 결과</h2><span class="xs muted num">전성분 ${rows.length}종 · 유효성분 ${rows.filter((r) => r.match).length}종</span></div>
+      ${saveForm()}
+      ${inciReport(rows)}`;
+    bindSaveForm(text);
+    out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function saveForm() {
+    return `<form class="card pad save-form" id="save-form">
+      <div class="sub-h">${ico('bookmark', 15)} 내 제품 라이브러리에 저장</div>
+      <div class="save-grid">
+        <input class="field" name="brand" placeholder="브랜드" maxlength="40" aria-label="브랜드" />
+        <input class="field" name="name" placeholder="제품명 (필수)" maxlength="80" required aria-label="제품명" />
+        <select class="field" name="category" aria-label="제품 유형">${Object.entries(LIB_CATEGORIES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+        <button class="btn primary" type="submit">${ico('bookmark', 16)} 저장</button>
       </div>
-      ${tail.length ? `<div class="alert danger">${ico('x')}<div><b>[PPM 미달 의심]</b> ${tail.map((r) => esc(r.raw)).join(', ')} — 전성분 말단(하위 40%)에 표기된 컨셉 원료입니다. 광고 메인 성분이라면 10 ppm 이하 컨셉 처방일 가능성이 높습니다.</div></div>` : ''}
+      <input class="field" name="source" placeholder="확인 출처 (예: 올리브영 상세페이지 상품정보 제공고시 / 제품 뒷면)" maxlength="120" aria-label="확인 출처" style="margin-top:8px" />
+      <div class="xs muted" id="save-msg" style="margin-top:6px">이 브라우저에만 저장됩니다. 다른 기기로 옮기려면 [내 제품]에서 백업 파일을 내보내세요.</div>
+    </form>`;
+  }
+
+  function bindSaveForm(text) {
+    const f = document.getElementById('save-form');
+    f.onsubmit = (e) => {
+      e.preventDefault();
+      const d = new FormData(f);
+      const name = String(d.get('name') || '').trim();
+      if (!name) return;
+      const entry = {
+        id: `u-${Date.now().toString(36)}`, brand: String(d.get('brand') || '').trim(), name,
+        category: d.get('category'), source: String(d.get('source') || '').trim(), inci: text.trim(), savedAt: new Date().toISOString(),
+      };
+      const list = lib.load();
+      list.unshift(entry);
+      const msg = document.getElementById('save-msg');
+      if (lib.save(list)) {
+        msg.innerHTML = `${chip('pass', '저장됨', 'check')} <a class="link-btn" href="#/library/${entry.id}">저장한 제품 보기 →</a>`;
+        f.querySelector('button').disabled = true;
+      } else {
+        msg.innerHTML = chip('danger', '저장 실패 — 브라우저 저장소를 사용할 수 없습니다 (시크릿 모드 등).', 'x');
+      }
+    };
+  }
+
+  /* 전성분 판독 리포트 (스캔·라이브러리 공용) */
+  function inciReport(rows) {
+    const s = E.summarizeInci(rows);
+    return `
+      <div class="stats" style="margin-top:0">
+        <div class="stat"><div class="k">인식 유효성분</div><div class="v num">${s.matched.length}<small>/ ${s.total}</small></div></div>
+        <div class="stat danger"><div class="k">컨셉 원료</div><div class="v num">${s.concept.length}</div></div>
+        <div class="stat warn"><div class="k">500 Da 초과</div><div class="v num">${s.overMw.length}</div></div>
+        <div class="stat"><div class="k">DDS 단서</div><div class="v num">${s.dds.length}</div></div>
+      </div>
+      ${s.tail.length ? `<div class="alert danger">${ico('x')}<div><b>[PPM 미달 의심]</b> ${s.tail.map((r) => esc(r.raw)).join(', ')} — 전성분 말단(하위 40%)에 표기된 컨셉 원료입니다. 광고 메인 성분이라면 10 ppm 이하 컨셉 처방일 가능성이 높습니다.</div></div>` : ''}
       <div class="alert info">${ico('info')}<div>전성분은 함량순 표기이나 <b>1% 이하 원료는 순서 무관</b>입니다. 정확한 PPM은 제조사 공개 자료로만 확인 가능하며, 여기서는 표기 순위·분자량·근거 등급으로 1차 스크리닝합니다.</div></div>
       <div class="card" style="margin-top:10px"><div class="tbl-wrap"><table class="spec">
         <thead><tr><th class="r">순위</th><th>표기 원료</th><th>판독</th><th class="r">분자량</th><th>근거 등급</th><th>플래그</th></tr></thead>
@@ -636,11 +685,206 @@
             <td><div class="why" style="display:flex;flex-wrap:wrap;gap:4px">${r.flags.map((f) => chip(f.tone, f.text)).join('') || chip('pass', '이상 없음', 'check')}</div></td></tr>`;
         }).join('')}</tbody>
       </table></div></div>`;
-    out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /* ───────── 내 제품 라이브러리 ─────────
+   * 사용자가 직접 확인한 전성분만 저장. 기본 수록(SD.INCI_PRODUCTS, 읽기 전용) + 브라우저 저장(localStorage) */
+  const LIB_KEY = 'sd.library.v1';
+  const LIB_CATEGORIES = { ...CATEGORIES, cleanser: '클렌저', sun: '선케어', etc: '기타' };
+  const lib = {
+    load() {
+      try { const v = JSON.parse(localStorage.getItem(LIB_KEY)); return Array.isArray(v) ? v : []; } catch { return []; }
+    },
+    save(list) {
+      try { localStorage.setItem(LIB_KEY, JSON.stringify(list)); return true; } catch { return false; }
+    },
+  };
+  const libAll = () => [...(SD.INCI_PRODUCTS || []).map((p) => ({ ...p, curated: true })), ...lib.load()];
+  const libFind = (id) => libAll().find((p) => p.id === id);
+  const cmpSel = new Set();
+  const MAX_CMP = 4;
+
+  function libCard(p, selectable = true) {
+    const s = E.summarizeInci(E.parseInci(p.inci));
+    const flags = [];
+    if (s.tail.length) flags.push(chip('danger', `PPM 미달 의심 ${s.tail.length}`, 'x'));
+    if (s.concept.length) flags.push(chip('warn', `컨셉 원료 ${s.concept.length}`, 'warn'));
+    if (s.overMw.length) flags.push(chip('', `500 Da 초과 ${s.overMw.length}`));
+    if (s.dds.length) flags.push(chip('info', 'DDS 단서'));
+    if (!flags.length) flags.push(chip('pass', '특이사항 없음', 'check'));
+    const on = cmpSel.has(p.id);
+    return `
+      <div class="card pcard lib-card ${on ? 'selected' : ''}">
+        <div class="pcard-top">
+          <a href="#/library/${esc(p.id)}" style="flex:1;min-width:0">
+            <div class="brand">${esc(p.brand || '브랜드 미입력')}</div>
+            <div class="name">${esc(p.name)}</div>
+          </a>
+          ${selectable ? `<label class="cmp-check" title="비교에 추가"><input type="checkbox" data-cmp="${esc(p.id)}" ${on ? 'checked' : ''} aria-label="${esc(p.name)} 비교 선택" />비교</label>` : ''}
+        </div>
+        <div class="meta">
+          ${chip('', LIB_CATEGORIES[p.category] || '기타')}
+          ${p.curated ? chip('navy', '기본 수록') : chip('info', '내가 저장')}
+          ${chip('', `전성분 ${s.total}종`)}
+        </div>
+        <div class="xs muted">${s.matched.slice(0, 4).map((r) => `${esc(r.match.ing.ko.split(' (')[0])} <span class="num">${r.rank}위</span>`).join(' · ') || '인식된 유효성분 없음'}</div>
+        <div class="flags">${flags.join('')}</div>
+      </div>`;
+  }
+
+  function renderLibrary() {
+    const all = libAll();
+    const mine = all.filter((p) => !p.curated).length;
+    [...cmpSel].forEach((id) => { if (!libFind(id)) cmpSel.delete(id); });
+    $app.innerHTML = `
+      <div class="page-h"><div class="eyebrow" style="color:var(--mint-ink)">My Library</div><h1>내 제품 라이브러리</h1>
+        <p>직접 확인한 전성분으로 등록한 제품입니다. 2~${MAX_CMP}개를 선택해 비교할 수 있습니다.</p></div>
+      <div class="lib-bar card pad">
+        <div class="small"><b class="num">${all.length}</b>개 제품 <span class="muted">(기본 수록 ${all.length - mine} · 내가 저장 ${mine})</span></div>
+        <div class="btn-row" style="margin:0">
+          <button class="btn primary" id="cmp-go" ${cmpSel.size < 2 ? 'disabled' : ''}>${ico('columns', 16)} 선택 비교 (<span class="num">${cmpSel.size}</span>)</button>
+          <a class="btn ghost" href="#/scan">${ico('plus', 16)} 제품 추가</a>
+          <button class="btn ghost" id="lib-export" ${mine ? '' : 'disabled'}>${ico('download', 16)} 백업 내보내기</button>
+          <label class="btn ghost" style="cursor:pointer">${ico('upload', 16)} 백업 가져오기<input type="file" accept="application/json,.json" id="lib-import" class="hidden" /></label>
+        </div>
+        <div class="xs muted" id="lib-msg"></div>
+      </div>
+      ${all.length
+        ? `<div class="plist" style="margin-top:14px">${all.map((p) => libCard(p)).join('')}</div>`
+        : `<div class="card empty" style="margin-top:14px">${ico('bookmark')}<p>아직 저장한 제품이 없습니다.<br/>[OCR 스캔]에서 전성분을 판독한 뒤 저장하세요.</p><a class="btn primary" href="#/scan">${ico('scan', 16)} 전성분 스캔하러 가기</a></div>`}
+      <p class="footer-note">저장 데이터는 이 브라우저에만 보관되며 서버로 전송되지 않습니다. 브라우저 데이터를 지우면 함께 삭제되니 백업을 권장합니다.</p>`;
+
+    $app.querySelectorAll('[data-cmp]').forEach((c) => c.onchange = () => {
+      const id = c.dataset.cmp;
+      if (c.checked && cmpSel.size >= MAX_CMP) { c.checked = false; flash(`최대 ${MAX_CMP}개까지 비교할 수 있습니다.`); return; }
+      c.checked ? cmpSel.add(id) : cmpSel.delete(id);
+      c.closest('.lib-card').classList.toggle('selected', c.checked);
+      const go = document.getElementById('cmp-go');
+      go.disabled = cmpSel.size < 2;
+      go.querySelector('span').textContent = cmpSel.size;
+    });
+    document.getElementById('cmp-go').onclick = () => { location.hash = `#/compare?ids=${[...cmpSel].map(encodeURIComponent).join(',')}`; };
+    document.getElementById('lib-export').onclick = () => {
+      const blob = new Blob([JSON.stringify(lib.load(), null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `spec-direct-library-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    document.getElementById('lib-import').onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const data = JSON.parse(await file.text());
+        if (!Array.isArray(data)) throw new Error('형식 오류');
+        const valid = data.filter((x) => x && typeof x.name === 'string' && typeof x.inci === 'string' && x.name.trim() && x.inci.trim())
+          .map((x) => ({
+            id: typeof x.id === 'string' && x.id.startsWith('u-') ? x.id : `u-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+            brand: String(x.brand || '').slice(0, 40), name: x.name.slice(0, 80), category: LIB_CATEGORIES[x.category] ? x.category : 'etc',
+            source: String(x.source || '').slice(0, 120), inci: x.inci, savedAt: x.savedAt || new Date().toISOString(),
+          }));
+        const list = lib.load();
+        const ids = new Set(list.map((x) => x.id));
+        const added = valid.filter((x) => !ids.has(x.id));
+        if (!lib.save([...added, ...list])) throw new Error('브라우저 저장소를 사용할 수 없습니다');
+        renderLibrary();
+        flash(`${added.length}개 제품을 가져왔습니다${valid.length - added.length ? ` (중복 ${valid.length - added.length}개 제외)` : ''}.`);
+      } catch (err) {
+        flash(`가져오기 실패 — ${err.message}`);
+      }
+    };
+  }
+  function flash(text) { const m = document.getElementById('lib-msg'); if (m) m.textContent = text; }
+
+  function renderLibraryItem(id) {
+    const p = libFind(id);
+    if (!p) { $app.innerHTML = `<div class="card empty"><p>저장된 제품을 찾을 수 없습니다.</p><a class="link-btn" href="#/library">내 제품으로</a></div>`; return; }
+    const rows = E.parseInci(p.inci);
+    $app.innerHTML = `
+      <a class="back" href="#/library">${ico('back', 16)} 내 제품</a>
+      <section class="report-head">
+        <div>
+          <div class="brand">${esc(p.brand || '브랜드 미입력')}</div>
+          <h1>${esc(p.name)}</h1>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="chip">${LIB_CATEGORIES[p.category] || '기타'}</span>
+            <span class="chip">${p.curated ? '기본 수록' : '내가 저장'}</span>
+            ${p.savedAt ? `<span class="chip num">${esc(p.savedAt.slice(0, 10))}</span>` : ''}
+          </div>
+          ${p.source ? `<div class="xs" style="color:#A8B2D1;margin-top:8px">출처: ${esc(p.source)}</div>` : ''}
+        </div>
+        <div class="btn-row" style="margin:0">
+          <button class="btn primary" id="to-cmp" style="background:var(--mint);color:var(--navy)">${ico('columns', 16)} ${cmpSel.has(p.id) ? '비교 목록에 있음' : '비교에 추가'}</button>
+          ${p.curated ? '' : `<button class="btn ghost" id="del">${ico('trash', 16)} 삭제</button>`}
+        </div>
+      </section>
+      <div style="margin-top:14px">${inciReport(rows)}</div>
+      <details class="card acc" style="margin-top:12px"><summary><span class="step">≡</span><div><div class="t">원문 전성분</div><div class="st">등록한 텍스트 그대로</div></div><span class="chev">${ico('chev')}</span></summary>
+        <div class="body small" style="word-break:keep-all">${esc(p.inci)}</div></details>`;
+
+    document.getElementById('to-cmp').onclick = () => {
+      if (!cmpSel.has(p.id)) {
+        if (cmpSel.size >= MAX_CMP) { alert(`최대 ${MAX_CMP}개까지 비교할 수 있습니다.`); return; }
+        cmpSel.add(p.id);
+      }
+      location.hash = '#/library';
+    };
+    const del = document.getElementById('del');
+    if (del) del.onclick = () => {
+      if (!confirm(`"${p.name}"을(를) 라이브러리에서 삭제할까요?`)) return;
+      lib.save(lib.load().filter((x) => x.id !== p.id));
+      cmpSel.delete(p.id);
+      location.hash = '#/library';
+    };
+  }
+
+  function renderCompare(ids) {
+    const items = ids.map(libFind).filter(Boolean).slice(0, MAX_CMP);
+    if (items.length < 2) { $app.innerHTML = `<div class="card empty"><p>비교하려면 제품을 2개 이상 선택하세요.</p><a class="link-btn" href="#/library">내 제품으로</a></div>`; return; }
+    const data = items.map((p) => {
+      const rows = E.parseInci(p.inci);
+      return { p, rows, s: E.summarizeInci(rows) };
+    });
+    // 행 = 어느 한 제품에라도 인식된 유효성분 (가장 앞 순위 기준 정렬)
+    const ingIds = [...new Set(data.flatMap((d) => d.s.ids))];
+    const bestRank = (id) => Math.min(...data.map((d) => (d.rows.find((r) => r.match?.id === id) || { rank: 999 }).rank / (d.s.total || 1)));
+    ingIds.sort((a, b) => bestRank(a) - bestRank(b));
+    const conflicts = E.conflictsAmong(data.map((d) => d.s.ids)).filter((c) => c.level !== 'info');
+
+    const cell = (d, id) => {
+      const r = d.rows.find((x) => x.match?.id === id);
+      if (!r) return '<td class="muted">—</td>';
+      const pos = r.rank / d.s.total;
+      const zone = pos <= 0.3 ? ['pass', '상위'] : pos <= 0.6 ? ['info', '중위'] : ['warn', '말단'];
+      return `<td><span class="num"><b>${r.rank}</b>/${d.s.total}</span> ${chip(zone[0], zone[1])}${r.flags.filter((f) => f.tone === 'danger').map((f) => `<div style="margin-top:4px">${chip('danger', f.text)}</div>`).join('')}</td>`;
+    };
+    const sumRow = (label, fn) => `<tr><th scope="row">${label}</th>${data.map((d) => `<td class="num">${fn(d)}</td>`).join('')}</tr>`;
+
+    $app.innerHTML = `
+      <a class="back" href="#/library">${ico('back', 16)} 내 제품</a>
+      <div class="page-h"><div class="eyebrow" style="color:var(--mint-ink)">Compare</div><h1>전성분 비교</h1><p>유효성분의 표기 순위(앞일수록 함량이 높음)와 플래그를 나란히 비교합니다.</p></div>
+      ${conflicts.length
+        ? conflicts.map((c) => `<div class="alert warn">${ico('warn')}<div><b>함께 쓸 때 주의</b> ${esc(INGREDIENTS[c.a].ko.split(' (')[0])} + ${esc(INGREDIENTS[c.b].ko.split(' (')[0])} — ${esc(c.reason)} <b>${esc(c.fix)}</b></div></div>`).join('')
+        : `<div class="alert navy">${ico('check')}<div><b>성분 충돌 0건</b> — 선택한 제품을 같은 루틴에 써도 충돌 규칙에 걸리지 않습니다.</div></div>`}
+      <div class="card" style="margin-top:10px"><div class="tbl-wrap"><table class="spec cmp">
+        <thead><tr><th>항목</th>${data.map((d) => `<th><a href="#/library/${esc(d.p.id)}"><span class="brand-s">${esc(d.p.brand || '—')}</span><br/><b>${esc(d.p.name)}</b></a></th>`).join('')}</tr></thead>
+        <tbody>
+          ${sumRow('전성분 수', (d) => d.s.total)}
+          ${sumRow('인식 유효성분', (d) => d.s.matched.length)}
+          ${sumRow('컨셉 원료', (d) => d.s.concept.length ? `<span style="color:var(--danger)">${d.s.concept.length}</span>` : 0)}
+          ${sumRow('PPM 미달 의심', (d) => d.s.tail.length ? `<span style="color:var(--danger)">${d.s.tail.length}</span>` : 0)}
+          ${sumRow('500 Da 초과', (d) => d.s.overMw.length)}
+          ${sumRow('DDS 단서', (d) => d.s.dds.map((r) => r.dds.ko.split(' ')[0]).join(', ') || '—')}
+          <tr class="divider"><th colspan="${data.length + 1}">유효성분 표기 순위</th></tr>
+          ${ingIds.map((id) => `<tr><th scope="row" class="ing-name"><b>${esc(INGREDIENTS[id].ko.split(' (')[0])}</b><span>${E.fmtMw(INGREDIENTS[id].mw)} · ${E.EVIDENCE[INGREDIENTS[id].evidence].ko}</span></th>${data.map((d) => cell(d, id)).join('')}</tr>`).join('')}
+        </tbody>
+      </table></div></div>
+      <p class="footer-note">상위 = 전성분 앞 30%, 중위 = 30~60%, 말단 = 60% 이후. 1% 이하 원료는 순서가 함량을 뜻하지 않습니다.</p>`;
   }
 
   /* ───────── Router ───────── */
-  const NAV = [['home', 'home', '홈'], ['filter', 'filter', '정밀 필터'], ['routine', 'layers', '루틴 매칭'], ['scan', 'scan', 'OCR 스캔']];
+  const NAV = [['home', 'home', '홈'], ['filter', 'filter', '정밀 필터'], ['routine', 'layers', '루틴 매칭'], ['scan', 'scan', 'OCR 스캔'], ['library', 'bookmark', '내 제품']];
   document.getElementById('logo-mark').innerHTML = ico('flask', 18);
   NAV.forEach(([k, icon, label]) => { document.querySelector(`[data-nav="${k}"]`).innerHTML = `${ico(icon, 18)}<span>${label}</span>`; });
 
@@ -649,7 +893,8 @@
     const parts = path.split('/').filter(Boolean);
     const params = new URLSearchParams(qs || '');
     const view = parts[0] || 'home';
-    document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === (['product', 'search'].includes(view) ? 'home' : view)));
+    const navKey = ['product', 'search'].includes(view) ? 'home' : view === 'compare' ? 'library' : view;
+    document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navKey));
     if (view === 'product') renderProduct(parts[1]);
     else if (view === 'search') renderSearch(params.get('q') || '');
     else if (view === 'filter') renderFilter();
@@ -659,6 +904,8 @@
       renderRoutine();
     }
     else if (view === 'scan') renderScan();
+    else if (view === 'library') parts[1] ? renderLibraryItem(decodeURIComponent(parts[1])) : renderLibrary();
+    else if (view === 'compare') renderCompare((params.get('ids') || '').split(',').filter(Boolean));
     else renderHome();
     window.scrollTo(0, 0);
   }
